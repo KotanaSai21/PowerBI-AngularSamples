@@ -2,11 +2,12 @@
 import { Component, OnInit, Inject, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { MsalService, MsalBroadcastService, MSAL_GUARD_CONFIG, MsalGuardConfiguration } from '@azure/msal-angular';
 import { AuthenticationResult, InteractionStatus, PopupRequest, RedirectRequest, EventMessage, EventType } from '@azure/msal-browser';
-import { Subject } from 'rxjs';
-import { filter, takeUntil } from 'rxjs/operators';
+import { Subject, throwError } from 'rxjs';
+import { catchError, filter, map, takeUntil } from 'rxjs/operators';
 
 import { service, factories, models, IEmbedConfiguration } from "powerbi-client";
 import * as config from '../config';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 
 @Component({
   selector: 'app-root',
@@ -29,7 +30,8 @@ export class AppComponent implements OnInit, OnDestroy {
   constructor(
     @Inject(MSAL_GUARD_CONFIG) private msalGuardConfig: MsalGuardConfiguration,
     private authService: MsalService,
-    private msalBroadcastService: MsalBroadcastService
+    private msalBroadcastService: MsalBroadcastService,
+    private http: HttpClient
   ) {
     
   }
@@ -170,6 +172,68 @@ export class AppComponent implements OnInit, OnDestroy {
     } else {
       this.authService.logoutRedirect();
     }
+  }
+
+  getEmbedUrl() {
+    let activeAccount = this.authService.instance.getActiveAccount();
+    const request = {
+      scopes: config.scopeBase,
+      account: activeAccount
+    }
+
+    console.log(request, activeAccount?.idToken)
+    const headers = new HttpHeaders({
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + this.accessToken
+    });
+    const url = `${config.powerBiApiUrl}v1.0/myorg/groups/${config.workspaceId}/reports/${config.reportId}`;
+    console.log(url,this.accessToken)
+
+    this.http.get(url,
+      { headers }).pipe(
+        catchError((error) => {
+          console.error('An error occurred:', error.error.message);
+          return throwError('Something bad happened; please try again later.');
+        })
+      ).subscribe((response: any) => {
+        this.embedUrl = response.embedUrl;
+        console.log(this.embedUrl)
+      })
+  }
+
+  async embedReport(){
+    console.log(this.accessToken, this.embedUrl)
+    const embedConfiguration: IEmbedConfiguration = {
+      type: "report",
+      tokenType: models.TokenType.Aad,
+      accessToken: this.accessToken,
+      embedUrl: this.embedUrl,
+      id: config.reportId,
+      /*
+      // Enable this setting to remove gray shoulders from embedded report
+      settings: {
+          background: models.BackgroundType.Transparent
+      }
+      */
+    };
+
+    const report = this.powerbi.embed(this.reportContainer.nativeElement, embedConfiguration);
+    
+      // Clear any other loaded handler events
+      report.off("loaded");
+
+      // Triggers when a content schema is successfully loaded
+      report.on("loaded", function () {
+        console.log("Report load successful");
+      });
+
+      // Clear any other rendered handler events
+      report.off("rendered");
+
+      // Triggers when a content is successfully embedded in UI
+      report.on("rendered", function () {
+        console.log("Report render successful");
+      });
   }
 
   ngOnDestroy(): void {

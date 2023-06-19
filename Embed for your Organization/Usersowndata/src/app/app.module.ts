@@ -30,15 +30,17 @@ import * as config from '../config'
                 }
             }
         }), {
-            interactionType: InteractionType.Redirect, // MSAL Guard Configuration
+            interactionType: InteractionType.Popup,
+            authRequest: {
+                scopes:['https://analysis.windows.net/powerbi/api/Report.Read.All']
+            } // MSAL Guard Configuration
         }, {
-            interactionType: InteractionType.Redirect, // MSAL Interceptor Configuration
+            interactionType: InteractionType.Popup, // MSAL Interceptor Configuration
             protectedResourceMap: new Map([
-                ['https://graph.microsoft.com/v1.0/me', ['user.read']],
-                ['https://api.myapplication.com/users/*', ['customscope.read']],
-                ['http://localhost:4200/about/', null] 
+                ['https://analysis.windows.net/powerbi/api/Report.Read.All', ['Report.Read.All']],
             ])}),
-        BrowserModule
+        BrowserModule,
+        HttpClientModule
     ],
     providers: [
         {
@@ -48,7 +50,7 @@ import * as config from '../config'
         },
         MsalService,
         MsalGuard,
-        MsalBroadcastService
+        MsalBroadcastService,
     ],
     bootstrap: [AppComponent, MsalRedirectComponent]
 })
