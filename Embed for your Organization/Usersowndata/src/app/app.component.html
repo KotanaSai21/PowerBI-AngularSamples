@@ -1,10 +1,6 @@
-<h2>Loading Report ...</h2>
-<!-- <h2>{{displayMessage}}</h2>
- -->
+<button mat-menu-item (click)="loginPopup()" *ngIf="!loginDisplay">Login</button>
+<button mat-menu-item (click)="logout()" *ngIf="loginDisplay">Logout</button>
+<button mat-menu-item (click)="embedReport()" *ngIf="loginDisplay">EmbedReport</button>
+<h2> Welcome {{accountName}}</h2>
 <div #embedContainer class="container"></div>
-<button mat-menu-item (click)="loginPopup()">Login using Popup</button>
-<button mat-menu-item (click)="getEmbedUrl()">EmbedIr;</button>
-<button mat-menu-item (click)="embedReport()">EmbedReport;</button>
 
-
-<h2>{{mock}}</h2>

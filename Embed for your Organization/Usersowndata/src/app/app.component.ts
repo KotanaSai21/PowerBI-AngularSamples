@@ -1,167 +1,70 @@
 
-import { Component, OnInit, Inject, OnDestroy, ViewChild, ElementRef } from '@angular/core';
-import { MsalService, MsalBroadcastService, MSAL_GUARD_CONFIG, MsalGuardConfiguration } from '@azure/msal-angular';
-import { AuthenticationResult, InteractionStatus, PopupRequest, RedirectRequest, EventMessage, EventType } from '@azure/msal-browser';
-import { Subject, throwError } from 'rxjs';
-import { catchError, filter, map, takeUntil } from 'rxjs/operators';
-
+import { Component, Inject, ViewChild, ElementRef } from '@angular/core';
+import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
+import { MsalService, MSAL_GUARD_CONFIG, MsalGuardConfiguration } from '@azure/msal-angular';
+import { AuthenticationResult, PopupRequest } from '@azure/msal-browser';
 import { service, factories, models, IEmbedConfiguration } from "powerbi-client";
+import { lastValueFrom, of } from 'rxjs';
+import { catchError, map} from 'rxjs/operators';
+
 import * as config from '../config';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
 
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css']
 })
-export class AppComponent implements OnInit, OnDestroy {
-  title = 'Angular 16 - MSAL Angular v3 Sample';
-  isIframe = false;
-  loginDisplay = false;
+
+export class AppComponent  {
   @ViewChild('embedContainer') private reportContainer!: ElementRef<HTMLDivElement>;
 
+  loginDisplay = false;
   displayMessage = "Displaymessage";
-  powerbi = new service.Service(factories.hpmFactory, factories.wpmpFactory, factories.routerFactory);
   accessToken: string = "";
   embedUrl = "";
-  mock:string | undefined = "hy "
-  private readonly _destroying$ = new Subject<void>();
+  accountName: string | undefined = ""
+  powerbi = new service.Service(factories.hpmFactory, factories.wpmpFactory, factories.routerFactory);
 
   constructor(
     @Inject(MSAL_GUARD_CONFIG) private msalGuardConfig: MsalGuardConfiguration,
     private authService: MsalService,
-    private msalBroadcastService: MsalBroadcastService,
     private http: HttpClient
-  ) {
-    
-  }
+  ) {}
 
-  ngOnInit(): void {
-    this.isIframe = window !== window.parent && !window.opener; // Remove this line to use Angular Universal
-    this.setLoginDisplay();
-
-    this.authService.instance.enableAccountStorageEvents(); // Optional - This will enable ACCOUNT_ADDED and ACCOUNT_REMOVED events emitted when a user logs in or out of another tab or window
-    this.msalBroadcastService.msalSubject$
-      .pipe(
-        filter((msg: EventMessage) => msg.eventType === EventType.ACCOUNT_ADDED || msg.eventType === EventType.ACCOUNT_REMOVED),
-      )
-      .subscribe((result: EventMessage) => {
-        if (this.authService.instance.getAllAccounts().length === 0) {
-          window.location.pathname = "/";
-        } else {
-          this.setLoginDisplay();
-        }
-      });
-    
-    this.msalBroadcastService.inProgress$
-      .pipe(
-        filter((status: InteractionStatus) => status === InteractionStatus.None),
-        takeUntil(this._destroying$)
-      )
-      .subscribe(() => {
-        this.setLoginDisplay();
-        this.checkAndSetActiveAccount();
-      })
-  }
-
-  
   ngAfterViewInit() {
-    if(this.accessToken !== "" && this.embedUrl !== "") {
-      const embedConfiguration: IEmbedConfiguration = {
-        type: "report",
-        tokenType: models.TokenType.Embed,
-        accessToken: this.accessToken,
-        embedUrl: this.embedUrl,
-        id: config.reportId,
-        /*
-        // Enable this setting to remove gray shoulders from embedded report
-        settings: {
-            background: models.BackgroundType.Transparent
-        }
-        */
-      };
-
-      const report = this.powerbi.embed(this.reportContainer.nativeElement, embedConfiguration);
-
-      // Clear any other loaded handler events
-      report.off("loaded");
-
-      // Triggers when a content schema is successfully loaded
-      report.on("loaded", function () {
-        console.log("Report load successful");
-      });
-
-      // Clear any other rendered handler events
-      report.off("rendered");
-
-      // Triggers when a content is successfully embedded in UI
-      report.on("rendered", function () {
-        console.log("Report render successful");
-      });
-
-      // Clear any other error handler event
-      report.off("error");
-
-      // Below patch of code is for handling errors that occur during embedding
-      report.on("error", function (event) {
-        const errorMsg = event.detail;
-
-        // Use errorMsg variable to log error in any destination of choice
-        console.error(errorMsg);
-      });
+    if (this.accessToken !== "" && this.embedUrl !== "") {
+      // Embed the Report
+      this.embedReport();
     }
 
     // User input - null check
     else if (config.workspaceId === "" || config.reportId === "") {
-      this.displayMessage =  "Please assign values to workspace Id and report Id in Config.ts file";
+      this.displayMessage = "Please assign values to workspace Id and report Id in Config.ts file";
       return;
     }
 
     else {
-      this.authenticate();
-    }
-  }
-
-  async authenticate() {
-    // console.log("authenticatrrrre");
-  }
-
-
-  setLoginDisplay() {
-    this.loginDisplay = this.authService.instance.getAllAccounts().length > 0;
-  }
-
-  checkAndSetActiveAccount(){
-    /**
-     * If no active account set but there are accounts signed in, sets first account to active account
-     * To use active account set here, subscribe to inProgress$ first in your component
-     * Note: Basic usage demonstrated. Your app may require more complicated account selection logic
-     */
-    let activeAccount = this.authService.instance.getActiveAccount();
-
-    if (!activeAccount && this.authService.instance.getAllAccounts().length > 0) {
-      let accounts = this.authService.instance.getAllAccounts();
-      this.authService.instance.setActiveAccount(accounts[0]);
+      // this.loginPopup();
     }
   }
 
   loginPopup() {
-    if (this.msalGuardConfig.authRequest){
-      this.authService.loginPopup({...this.msalGuardConfig.authRequest} as PopupRequest)
+    if (this.msalGuardConfig.authRequest) {
+      this.authService.loginPopup({ ...this.msalGuardConfig.authRequest } as PopupRequest)
         .subscribe((response: AuthenticationResult) => {
           this.authService.instance.setActiveAccount(response.account);
           this.accessToken = response.accessToken;
-          this.mock = response.account?.name;
-
+          this.accountName = response.account?.name;
         });
-      } else {
-        this.authService.loginPopup()
-          .subscribe((response: AuthenticationResult) => {
-            this.authService.instance.setActiveAccount(response.account);
-            this.accessToken = response.accessToken;
-            this.mock = response.account?.name;
-      });
+    } else {
+      this.authService.loginPopup()
+        .subscribe((response: AuthenticationResult) => {
+          this.authService.instance.setActiveAccount(response.account);
+          this.accessToken = response.accessToken;
+          this.accountName = response.account?.name;
+        });
     }
+    this.setLoginDisplay();
   }
 
   logout(popup?: boolean) {
@@ -172,43 +75,37 @@ export class AppComponent implements OnInit, OnDestroy {
     } else {
       this.authService.logoutRedirect();
     }
+    this.loginDisplay = false;
   }
 
-  getEmbedUrl() {
-    let activeAccount = this.authService.instance.getActiveAccount();
-    const request = {
-      scopes: config.scopeBase,
-      account: activeAccount
-    }
-
-    console.log(request, activeAccount?.idToken)
+  // Get the Embed URL for the report
+  async getEmbedUrl(): Promise<string>{
+    console.log("getEmbedUrl")
+    const url = `${config.powerBiApiUrl}v1.0/myorg/groups/${config.workspaceId}/reports/${config.reportId}`;
     const headers = new HttpHeaders({
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + this.accessToken
     });
-    const url = `${config.powerBiApiUrl}v1.0/myorg/groups/${config.workspaceId}/reports/${config.reportId}`;
-    console.log(url,this.accessToken)
 
-    this.http.get(url,
-      { headers }).pipe(
-        catchError((error) => {
-          console.error('An error occurred:', error.error.message);
-          return throwError('Something bad happened; please try again later.');
-        })
-      ).subscribe((response: any) => {
-        this.embedUrl = response.embedUrl;
-        console.log(this.embedUrl)
+    const response = this.http.get(url, { headers }).pipe(
+      map((response: any) => response.embedUrl),
+      catchError((error: HttpErrorResponse) => {
+        console.error('An error occurred:', error.error.message);
+        return of(error.error.message);
       })
+    );
+
+    return lastValueFrom(response);
   }
 
-  async embedReport(){
-    console.log(this.accessToken, this.embedUrl)
+  // Embeds a Power BI Report
+  async embedReport() {
+    this.embedUrl =  await this.getEmbedUrl();
     const embedConfiguration: IEmbedConfiguration = {
       type: "report",
       tokenType: models.TokenType.Aad,
       accessToken: this.accessToken,
       embedUrl: this.embedUrl,
-      id: config.reportId,
       /*
       // Enable this setting to remove gray shoulders from embedded report
       settings: {
@@ -216,28 +113,43 @@ export class AppComponent implements OnInit, OnDestroy {
       }
       */
     };
-
+    console.log("embedReport",this.embedUrl)
     const report = this.powerbi.embed(this.reportContainer.nativeElement, embedConfiguration);
-    
-      // Clear any other loaded handler events
-      report.off("loaded");
 
-      // Triggers when a content schema is successfully loaded
-      report.on("loaded", function () {
-        console.log("Report load successful");
-      });
+    // Clear any other loaded handler events
+    report.off("loaded");
 
-      // Clear any other rendered handler events
-      report.off("rendered");
+    // Triggers when a content schema is successfully loaded
+    report.on("loaded", function () {
+      console.log("Report load successful");
+    });
 
-      // Triggers when a content is successfully embedded in UI
-      report.on("rendered", function () {
-        console.log("Report render successful");
-      });
+    // Clear any other rendered handler events
+    report.off("rendered");
+
+    // Triggers when a content is successfully embedded in UI
+    report.on("rendered", function () {
+      console.log("Report render successful");
+    });
+
+    // Clear any other error handler event
+    report.off("error");
+
+    // Below patch of code is for handling errors that occur during embedding
+    report.on("error", function (event) {
+      const errorMsg = event.detail;
+
+      // Use errorMsg variable to log error in any destination of choice
+      console.error(errorMsg);
+    });
+  }
+
+  setLoginDisplay() {
+    this.loginDisplay = this.authService.instance.getAllAccounts().length > 0;
+    console.log(this.loginDisplay)
   }
 
   ngOnDestroy(): void {
-    this._destroying$.next(undefined);
-    this._destroying$.complete();
+    this.powerbi.reset(this.reportContainer.nativeElement);
   }
 }
